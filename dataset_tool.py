@@ -20,7 +20,7 @@ import PIL.Image
 import dnnlib.tflib as tflib
 
 from training import dataset
-
+from tqdm import tqdm
 #----------------------------------------------------------------------------
 
 def error(msg):
@@ -500,8 +500,19 @@ def create_celeba(tfrecord_dir, celeba_dir, cx=89, cy=121):
 #----------------------------------------------------------------------------
 
 def create_from_images(tfrecord_dir, image_dir, shuffle):
+    from natsort import natsorted
+
     print('Loading images from "%s"' % image_dir)
-    image_filenames = sorted(glob.glob(os.path.join(image_dir, '*')))
+    
+    #image_filenames = sorted(glob.glob(os.path.join(image_dir, '*')))
+    if os.path.exists(image_dir+'.txt'):
+        with open(image_dir+'.txt') as f:
+            image_filenames = f.readlines()
+        image_filenames = [f.strip('\n') for f in image_filenames]
+        image_filenames = [f for f in image_filenames if f.endswith('.png')]
+    else:
+        image_filenames = natsorted(tqdm(glob.glob(os.path.join(image_dir, '**/*.png'), recursive=True)))
+    
     if len(image_filenames) == 0:
         error('No input images found')
 
@@ -515,15 +526,20 @@ def create_from_images(tfrecord_dir, image_dir, shuffle):
     if channels not in [1, 3]:
         error('Input images must be stored as RGB or grayscale')
 
+    ## added resume code
     with TFRecordExporter(tfrecord_dir, len(image_filenames)) as tfr:
         order = tfr.choose_shuffled_order() if shuffle else np.arange(len(image_filenames))
-        for idx in range(order.size):
-            img = np.asarray(PIL.Image.open(image_filenames[order[idx]]))
-            if channels == 1:
-                img = img[np.newaxis, :, :] # HW => CHW
-            else:
-                img = img.transpose([2, 0, 1]) # HWC => CHW
-            tfr.add_image(img)
+        for idx in tqdm(range(order.size)):
+            try:
+                img = np.asarray(PIL.Image.open(image_filenames[order[idx]]))
+                if channels == 1:
+                    img = img[np.newaxis, :, :] # HW => CHW
+                else:
+                    img = img.transpose([2, 0, 1]) # HWC => CHW
+                tfr.add_image(img)
+            except:
+                print('error in {}'.format(image_filenames[order[idx]]))
+                pass
 
 #----------------------------------------------------------------------------
 
